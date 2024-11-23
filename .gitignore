@@ -34,7 +34,6 @@ MANIFEST
 *.spec
 
 ~$names.xlsx
-src
 
 # Installer logs
 pip-log.txt

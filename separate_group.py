@@ -6,8 +6,7 @@ from collections import Counter, defaultdict
 import sys
 import collections
 
-# sys.path.append("src")
-# from src import evaluate
+from src import init_individual
 
 
 # リストの中から最も頻出な要素の数を返す。同じクラスの人数をカウントする関数
@@ -51,12 +50,16 @@ def calculate_total_score(score_lists):
     return total_score
 
 class GeneticAlgorithm:
-    def __init__(self, names, group_size, population_size, generations, mutation_rate):
+    def __init__(self, names, group_size, population_size, generations, mutation_rate, mutation_indpb, k_select_best, tournsize):
         self.names = names
         self.group_size = group_size
         self.population_size = population_size
         self.generations = generations
         self.mutation_rate = mutation_rate
+        
+        self.mutation_indpb = mutation_indpb
+        self.k_select_best = k_select_best
+        self.tournsize = tournsize
         
         self.target_counts = dict()
 
@@ -70,22 +73,21 @@ class GeneticAlgorithm:
         self.toolbox.register("population", tools.initRepeat, list, self.toolbox.individual)
 
         self.toolbox.register("mate", self.two_point_crossover)
-        self.toolbox.register("mutate", tools.mutShuffleIndexes, indpb=0.2)
+        self.toolbox.register("mutate", tools.mutShuffleIndexes, indpb=self.mutation_indpb)
 
-        self.toolbox.register("select_best", tools.selBest, k=5)  # 最も適応度が高い個体を5つ選択
-        self.toolbox.register("select_tournament", tools.selTournament, tournsize=3)  # トーナメント選択を実行
+        self.toolbox.register("select_best", tools.selBest, k=self.k_select_best)  # 最も適応度が高い個体を5つ選択
+        self.toolbox.register("select_tournament", tools.selTournament, tournsize=self.tournsize)  # トーナメント選択を実行
         self.toolbox.register("select", self.combined_selection)
+        # self.toolbox.register("select", tools.selRoulette)
         
         self.toolbox.register("evaluate", self.evaluate)
 
     # 個体を初期化する関数（リストをシャッフル）
     def init_individual(self):
-        genome = list(range(1, len(self.names) // self.group_size + 1)) * self.group_size
-        genome = genome + [1]
+        genome = init_individual.get_genome(len(self.names), self.group_size, hi_lo="lo")
+        random.shuffle(genome)
         self.target_counts = Counter(genome)
-        
-        return genome[:len(self.names)]
-
+        return genome
 
     def combined_selection(self, population, k):
         # 最も適応度が高い個体をいくつか選択
@@ -94,7 +96,6 @@ class GeneticAlgorithm:
         rest_individuals = self.toolbox.select_tournament(population, k=len(population) - len(best_individuals))
         # 選択された個体を結合し、全体としてk個体選ぶ
         return best_individuals + rest_individuals[:k - len(best_individuals)]
-
 
     def two_point_crossover(self, parent1, parent2):
         # 2点交叉
@@ -126,7 +127,6 @@ class GeneticAlgorithm:
                     # 足りない要素を追加する位置をランダムに決定
                     insert_position = random.randint(0, len(genome))
                     genome.insert(insert_position, element)
-
         return genome
 
     # 個体を評価する関数（評価関数）
@@ -136,22 +136,19 @@ class GeneticAlgorithm:
         # 合計スコアを計算
         total_score = calculate_total_score(score_lists)
 
-        return (total_score,)  # Ensure to return a tuple
+        return (total_score,)
 
     # アルゴリズムの実行
     def run(self):
         random.seed(42)
         population = self.toolbox.population(n=self.population_size)
-
         # 統計情報の設定
         stats = tools.Statistics(lambda ind: ind.fitness.values)
         stats.register("min", np.min)
         stats.register("avg", np.mean)
-
         # 遺伝的アルゴリズムの実行
-        population, logbook = algorithms.eaSimple(population, self.toolbox, cxpb=0.9, mutpb=self.mutation_rate,
+        population, logbook = algorithms.eaSimple(population, self.toolbox, cxpb=0.8, mutpb=self.mutation_rate,
                                                   ngen=self.generations, stats=stats, verbose=True)
-
         # 最良の個体の表示
         best_individual = tools.selBest(population, k=1)[0]
         self.display_result(best_individual)
@@ -218,8 +215,11 @@ if __name__ == "__main__":
     ga = GeneticAlgorithm(
         names=list(df[COL_NAME]),
         group_size=4,
-        population_size=800,
-        generations=50,
-        mutation_rate=0.15
+        population_size=700,
+        generations=200,
+        mutation_rate=0.1,
+        mutation_indpb=0.2,
+        k_select_best=5,
+        tournsize=3
     )
     ga.run()
