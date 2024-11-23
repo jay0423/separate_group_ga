@@ -6,6 +6,10 @@ from collections import Counter, defaultdict
 import sys
 import collections
 
+# sys.path.append("src")
+# from src import evaluate
+
+
 # リストの中から最も頻出な要素の数を返す。同じクラスの人数をカウントする関数
 def most_frequent_element_count(lst):
     if not lst:
@@ -37,8 +41,8 @@ def calculate_score_details(df, group_list):
 # スコアリストを基に合計スコアを算出する関数
 def calculate_total_score(score_lists):
     total_score = 0
-    total_score += WEIGHT3 * max(score_lists[0])
-    total_score += WEIGHT4 * sum(score_lists[0])
+    total_score += WEIGHT1 * max(score_lists[0])
+    total_score += WEIGHT2 * sum(score_lists[0])
     
     for score_list in score_lists[1:]:
         total_score += WEIGHT3 * max(score_list)
@@ -53,6 +57,8 @@ class GeneticAlgorithm:
         self.population_size = population_size
         self.generations = generations
         self.mutation_rate = mutation_rate
+        
+        self.target_counts = dict()
 
         # 遺伝的アルゴリズムのセットアップ
         creator.create("FitnessMin", base.Fitness, weights=(-1.0,))
@@ -63,8 +69,8 @@ class GeneticAlgorithm:
         self.toolbox.register("individual", tools.initIterate, creator.Individual, self.toolbox.attr_group)
         self.toolbox.register("population", tools.initRepeat, list, self.toolbox.individual)
 
-        self.toolbox.register("mate", self.crossover_preserve_elements)
-        self.toolbox.register("mutate", tools.mutShuffleIndexes, indpb=0.9)
+        self.toolbox.register("mate", self.two_point_crossover)
+        self.toolbox.register("mutate", tools.mutShuffleIndexes, indpb=0.2)
 
         self.toolbox.register("select_best", tools.selBest, k=5)  # 最も適応度が高い個体を5つ選択
         self.toolbox.register("select_tournament", tools.selTournament, tournsize=3)  # トーナメント選択を実行
@@ -76,11 +82,8 @@ class GeneticAlgorithm:
     def init_individual(self):
         genome = list(range(1, len(self.names) // self.group_size + 1)) * self.group_size
         genome = genome + [1]
-        random.shuffle(genome)
-        print(genome)
-        original_dict = dict(collections.Counter(genome))
-        sorted_dict = dict(sorted(original_dict.items()))
-        # print(sorted_dict)
+        self.target_counts = Counter(genome)
+        
         return genome[:len(self.names)]
 
 
@@ -93,42 +96,38 @@ class GeneticAlgorithm:
         return best_individuals + rest_individuals[:k - len(best_individuals)]
 
 
-    # 各要素の出現回数を維持したまま交叉を行う関数
-    def crossover_preserve_elements(self, ind1, ind2):
-        # 各要素の出現回数を保持
-        count1 = Counter(ind1)
-        count2 = Counter(ind2)
-        
-        # 親ゲノムの長さを確認
-        length = len(ind1)
-        
-        # 子供ゲノムを初期化
-        child1 = [None] * length
-        child2 = [None] * length
-        
-        # 交叉点をランダムに決定
-        crossover_point = random.randint(1, length - 1)
+    def two_point_crossover(self, parent1, parent2):
+        # 2点交叉
+        cx_point1, cx_point2 = sorted(random.sample(range(1, len(parent1)), 2))
+        child1 = parent1[:cx_point1] + parent2[cx_point1:cx_point2] + parent1[cx_point2:]
+        child2 = parent2[:cx_point1] + parent1[cx_point1:cx_point2] + parent2[cx_point2:]
 
-        # 交叉点までを親1、以降を親2からコピー
-        child1[:crossover_point] = ind1[:crossover_point]
-        child2[:crossover_point] = ind2[:crossover_point]
-
-        # 各要素の出現回数を更新
-        count1.subtract(child1[:crossover_point])
-        count2.subtract(child2[:crossover_point])
-
-        # 残りの部分に要素を埋める
-        for i in range(crossover_point, length):
-            available_elements1 = [element for element, count_remaining in count2.items() if count_remaining > 0]
-            available_elements2 = [element for element, count_remaining in count1.items() if count_remaining > 0]
-            
-            child1[i] = random.choice(available_elements1)
-            count2[child1[i]] -= 1
-
-            child2[i] = random.choice(available_elements2)
-            count1[child2[i]] -= 1
+        # 子供のゲノムを修正
+        child1 = self.fix_genome(child1, self.target_counts)
+        child2 = self.fix_genome(child2, self.target_counts)
 
         return creator.Individual(child1), creator.Individual(child2)
+
+    def fix_genome(self, genome, target_counts):
+        # 各要素の出現回数をカウント
+        count = Counter(genome)
+
+        # 要素が足りない場合は追加、多い場合は削除
+        for element, target_count in target_counts.items():
+            if count[element] > target_count:
+                # 多すぎる要素を減らす
+                excess = count[element] - target_count
+                for _ in range(excess):
+                    genome.remove(element)
+            elif count[element] < target_count:
+                # 足りない要素を追加
+                shortage = target_count - count[element]
+                for _ in range(shortage):
+                    # 足りない要素を追加する位置をランダムに決定
+                    insert_position = random.randint(0, len(genome))
+                    genome.insert(insert_position, element)
+
+        return genome
 
     # 個体を評価する関数（評価関数）
     def evaluate(self, individual):
@@ -150,7 +149,7 @@ class GeneticAlgorithm:
         stats.register("avg", np.mean)
 
         # 遺伝的アルゴリズムの実行
-        population, logbook = algorithms.eaSimple(population, self.toolbox, cxpb=0, mutpb=self.mutation_rate,
+        population, logbook = algorithms.eaSimple(population, self.toolbox, cxpb=0.9, mutpb=self.mutation_rate,
                                                   ngen=self.generations, stats=stats, verbose=True)
 
         # 最良の個体の表示
@@ -169,15 +168,9 @@ class GeneticAlgorithm:
             groups[group_number].append(self.names[i])
         print(self.names)
         print(best_individual)
+        print(calculate_score_details(df, best_individual))
 
-        # グループサイズが4人または3人になるように調整
         final_groups = [group for group in groups.values() if len(group) >= 1]
-        # ungrouped_members = [member for group in groups.values() if len(group) < 3 for member in group]
-
-        # for group in final_groups:
-        #     while len(group) < self.group_size and ungrouped_members:
-        #         group.append(ungrouped_members.pop())
-
         for group_num, members in enumerate(final_groups, start=1):
             print(f"Group {group_num}: {members}")
 
@@ -225,8 +218,8 @@ if __name__ == "__main__":
     ga = GeneticAlgorithm(
         names=list(df[COL_NAME]),
         group_size=4,
-        population_size=1000,
+        population_size=800,
         generations=50,
-        mutation_rate=0.5
+        mutation_rate=0.15
     )
     ga.run()
