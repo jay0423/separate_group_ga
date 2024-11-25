@@ -33,7 +33,7 @@ MANIFEST
 *.manifest
 *.spec
 
-~$names.xlsx
+~$*
 
 # Installer logs
 pip-log.txt

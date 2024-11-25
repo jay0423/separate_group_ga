@@ -50,16 +50,18 @@ def calculate_total_score(score_lists):
     return total_score
 
 class GeneticAlgorithm:
-    def __init__(self, names, group_size, population_size, generations, mutation_rate, mutation_indpb, k_select_best, tournsize):
+    def __init__(self, names, group_size, population_size, generations, mutation_rate, mutation_indpb, k_select_best, tournsize, cxpb):
         self.names = names
         self.group_size = group_size
         self.population_size = population_size
+        
+        # 遺伝的アルゴリズムパラメータ
         self.generations = generations
         self.mutation_rate = mutation_rate
-        
         self.mutation_indpb = mutation_indpb
         self.k_select_best = k_select_best
         self.tournsize = tournsize
+        self.cxpb = cxpb
         
         self.target_counts = dict()
 
@@ -147,11 +149,12 @@ class GeneticAlgorithm:
         stats.register("min", np.min)
         stats.register("avg", np.mean)
         # 遺伝的アルゴリズムの実行
-        population, logbook = algorithms.eaSimple(population, self.toolbox, cxpb=0.8, mutpb=self.mutation_rate,
+        population, logbook = algorithms.eaSimple(population, self.toolbox, cxpb=self.cxpb, mutpb=self.mutation_rate,
                                                   ngen=self.generations, stats=stats, verbose=True)
         # 最良の個体の表示
         best_individual = tools.selBest(population, k=1)[0]
-        self.display_result(best_individual)
+        scores_best_individual, final_groups = self.display_result(best_individual)
+        self.export_excel(scores_best_individual, final_groups)
 
     # 結果の表示
     def display_result(self, best_individual):
@@ -165,11 +168,21 @@ class GeneticAlgorithm:
             groups[group_number].append(self.names[i])
         print(self.names)
         print(best_individual)
-        print(calculate_score_details(df, best_individual))
+        scores_best_individual = calculate_score_details(df, best_individual)
+        print(scores_best_individual)
 
         final_groups = [group for group in groups.values() if len(group) >= 1]
         for group_num, members in enumerate(final_groups, start=1):
             print(f"Group {group_num}: {members}")
+        return scores_best_individual, final_groups
+
+    # 結果のエクセルへの出力
+    def export_excel(self, scores_best_individual, final_groups):
+        df1 = pd.DataFrame(final_groups)
+        df2 = pd.DataFrame(scores_best_individual)
+        print(df1)
+        print(df2)
+        print(pd.concat([df1, df2.T], axis=1))
 
 if __name__ == "__main__":
     # 定数の定義
@@ -216,10 +229,11 @@ if __name__ == "__main__":
         names=list(df[COL_NAME]),
         group_size=4,
         population_size=700,
-        generations=200,
+        generations=2,
         mutation_rate=0.1,
         mutation_indpb=0.2,
         k_select_best=5,
-        tournsize=3
+        tournsize=3,
+        cxpb=0.8
     )
     ga.run()
