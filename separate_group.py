@@ -151,6 +151,12 @@ class GeneticAlgorithm:
         # 遺伝的アルゴリズムの実行
         population, logbook = algorithms.eaSimple(population, self.toolbox, cxpb=self.cxpb, mutpb=self.mutation_rate,
                                                   ngen=self.generations, stats=stats, verbose=True)
+        # スコアが0で早期終了
+        for gen, record in enumerate(logbook):
+            if record["min"] <= 17:  # 最小スコアが0の場合
+                print(f"Score reached 0 at generation {gen}. Terminating early.")
+                break
+        
         # 最良の個体の表示
         best_individual = tools.selBest(population, k=1)[0]
         scores_best_individual, final_groups = self.display_result(best_individual)
@@ -229,7 +235,7 @@ if __name__ == "__main__":
         names=list(df[COL_NAME]),
         group_size=4,
         population_size=700,
-        generations=2,
+        generations=25,
         mutation_rate=0.1,
         mutation_indpb=0.2,
         k_select_best=5,
