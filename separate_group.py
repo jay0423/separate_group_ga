@@ -4,8 +4,10 @@ import numpy as np
 import pandas as pd
 from collections import Counter, defaultdict
 import sys
+import collections
 
 from src import init_individual
+import openpyxl
 
 from src.settings_xlsx import ExcelTableExtractor
 
@@ -14,6 +16,8 @@ from src.evaluation_functions import (
     most_frequent_element_count,
     calculate_score_details,
     calculate_total_score,
+    get_past_out_n,  # 新しく追加
+    COL_OUTPUT,      # COL_OUTPUTをインポート
 )
 
 class GeneticAlgorithm:
@@ -31,8 +35,6 @@ class GeneticAlgorithm:
         df,
         col_name,
         col_class,
-        col_output,
-        past_out_n,
         weight1,
         weight2,
         weight3,
@@ -54,8 +56,6 @@ class GeneticAlgorithm:
         self.df = df
         self.col_name = col_name
         self.col_class = col_class
-        self.col_output = col_output
-        self.past_out_n = past_out_n
         self.weight1 = weight1
         self.weight2 = weight2
         self.weight3 = weight3
@@ -69,14 +69,18 @@ class GeneticAlgorithm:
 
         self.toolbox = base.Toolbox()
         self.toolbox.register("attr_group", self.init_individual)
-        self.toolbox.register("individual", tools.initIterate, creator.Individual, self.toolbox.attr_group)
+        self.toolbox.register(
+            "individual", tools.initIterate, creator.Individual, self.toolbox.attr_group
+        )
         self.toolbox.register("population", tools.initRepeat, list, self.toolbox.individual)
 
         self.toolbox.register("mate", self.two_point_crossover)
         self.toolbox.register("mutate", tools.mutShuffleIndexes, indpb=self.mutation_indpb)
 
         self.toolbox.register("select_best", tools.selBest, k=self.k_select_best)  # 最も適応度が高い個体を選択
-        self.toolbox.register("select_tournament", tools.selTournament, tournsize=self.tournsize)  # トーナメント選択を実行
+        self.toolbox.register(
+            "select_tournament", tools.selTournament, tournsize=self.tournsize
+        )  # トーナメント選択を実行
         self.toolbox.register("select", self.combined_selection)
         # self.toolbox.register("select", tools.selRoulette)
 
@@ -93,7 +97,9 @@ class GeneticAlgorithm:
         # 最も適応度が高い個体をいくつか選択
         best_individuals = self.toolbox.select_best(population)
         # 残りの個体をトーナメント選択で選択
-        rest_individuals = self.toolbox.select_tournament(population, k=len(population) - len(best_individuals))
+        rest_individuals = self.toolbox.select_tournament(
+            population, k=len(population) - len(best_individuals)
+        )
         # 選択された個体を結合し、全体としてk個体選ぶ
         return best_individuals + rest_individuals[: k - len(best_individuals)]
 
@@ -133,7 +139,7 @@ class GeneticAlgorithm:
     def evaluate(self, individual):
         # スコアリストを計算
         score_lists = calculate_score_details(
-            self.df, individual, self.col_name, self.col_class, self.col_output, self.past_out_n
+            self.df, individual, self.col_name, self.col_class
         )
         # 合計スコアを計算
         total_score = calculate_total_score(
@@ -144,7 +150,7 @@ class GeneticAlgorithm:
 
     # アルゴリズムの実行
     def run(self):
-        random.seed(42)
+        # random.seed(42)
         population = self.toolbox.population(n=self.population_size)
         # 統計情報の設定
         stats = tools.Statistics(lambda ind: ind.fitness.values)
@@ -178,15 +184,15 @@ class GeneticAlgorithm:
             groups[group_number].append(self.names[i])
         print(self.names)
         print(best_individual)
-        scores_best_individual = calculate_score_details(
-            self.df, best_individual, self.col_name, self.col_class, self.col_output, self.past_out_n
+        score_lists = calculate_score_details(
+            self.df, best_individual, self.col_name, self.col_class
         )
-        print(scores_best_individual)
+        print(score_lists)
 
         final_groups = [group for group in groups.values() if len(group) >= 1]
         for group_num, members in enumerate(final_groups, start=1):
             print(f"Group {group_num}: {members}")
-        return scores_best_individual, final_groups
+        return score_lists, final_groups
 
     # 結果のエクセルへの出力
     def export_excel(self, scores_best_individual, final_groups):
@@ -216,7 +222,9 @@ if __name__ == "__main__":
 
     # テーブル2
     extractor.table = "テーブル2"
-    MINIMIZE_DUPLICATE_AFFILIATIONS = extractor.get_value("MINIMIZE_DUPLICATE_AFFILIATIONS")
+    MINIMIZE_DUPLICATE_AFFILIATIONS = extractor.get_value(
+        "MINIMIZE_DUPLICATE_AFFILIATIONS"
+    )
     GROUP_SIZE = extractor.get_value("GROUP_SIZE")
     ADJUST_GROUP_SIZE_FOR_REMAINDER = extractor.get_value("ADJUST_GROUP_SIZE_FOR_REMAINDER")
 
@@ -235,12 +243,6 @@ if __name__ == "__main__":
     cxpb = extractor.get_value("cxpb")
 
     extractor.close_workbook()
-
-    # 追加列名
-    COL_OUTPUT = "グループ分け"  # グループ分け名
-
-    # 重みづけ
-    PAST_OUT_N = 3  ####!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
     # 初期データ処理
     df_origin = pd.read_excel(EXCEL_NAME, sheet_name=SHEET_NAME)
@@ -268,8 +270,6 @@ if __name__ == "__main__":
         df=df,
         col_name=COL_NAME,
         col_class=COL_CLASS,
-        col_output=COL_OUTPUT,
-        past_out_n=PAST_OUT_N,
         weight1=WEIGHT1,
         weight2=WEIGHT2,
         weight3=WEIGHT3,
