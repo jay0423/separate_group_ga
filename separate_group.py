@@ -7,54 +7,43 @@ import sys
 import collections
 
 from src import init_individual
+import openpyxl
 
+from src.settings_xlsx import ExcelTableExtractor
 
-# リストの中から最も頻出な要素の数を返す。同じクラスの人数をカウントする関数
-def most_frequent_element_count(lst):
-    if not lst:
-        return 0  # リストが空の場合、0を返す
-    element_counts = Counter(lst)  # リスト内の要素の出現回数をカウント
-    most_common = element_counts.most_common(1)  # 最も多い要素とそのカウントを取得
-    return most_common[0][1] - 1
-
-# グループリストと名前リストからグループ分けを行い、スコアを計算する関数
-def calculate_score_details(df, group_list):
-    name_list = list(df["氏名"])
-    grouped_names = defaultdict(list)
-    for group, person in zip(group_list, name_list):
-        grouped_names[group].append(person)
-    
-    target_cols = [COL_CLASS] + [COL_OUTPUT + str(i+1) for i in range(PAST_OUT_N)]
-    score_lists = []
-    
-    for target_col in target_cols:
-        target_dict = df.set_index("氏名")[target_col].to_dict()
-        group_scores = []
-        for group in grouped_names.values():
-            element_list = [target_dict.get(name) for name in group if target_dict.get(name) is not None]
-            group_scores.append(most_frequent_element_count(element_list))
-        score_lists.append(group_scores)
-    
-    return score_lists
-
-# スコアリストを基に合計スコアを算出する関数
-def calculate_total_score(score_lists):
-    total_score = 0
-    total_score += WEIGHT1 * max(score_lists[0])
-    total_score += WEIGHT2 * sum(score_lists[0])
-    
-    for score_list in score_lists[1:]:
-        total_score += WEIGHT3 * max(score_list)
-        total_score += WEIGHT4 * sum(score_list)
-    
-    return total_score
+# 評価関数をインポート
+from src.evaluation_functions import (
+    most_frequent_element_count,
+    calculate_score_details,
+    calculate_total_score,
+    get_past_out_n,  # 新しく追加
+    COL_OUTPUT,      # COL_OUTPUTをインポート
+)
 
 class GeneticAlgorithm:
-    def __init__(self, names, group_size, population_size, generations, mutation_rate, mutation_indpb, k_select_best, tournsize, cxpb):
+    def __init__(
+        self,
+        names,
+        group_size,
+        population_size,
+        generations,
+        mutation_rate,
+        mutation_indpb,
+        k_select_best,
+        tournsize,
+        cxpb,
+        df,
+        col_name,
+        col_class,
+        weight1,
+        weight2,
+        weight3,
+        weight4,
+    ):
         self.names = names
         self.group_size = group_size
         self.population_size = population_size
-        
+
         # 遺伝的アルゴリズムパラメータ
         self.generations = generations
         self.mutation_rate = mutation_rate
@@ -62,7 +51,16 @@ class GeneticAlgorithm:
         self.k_select_best = k_select_best
         self.tournsize = tournsize
         self.cxpb = cxpb
-        
+
+        # 追加のパラメータ
+        self.df = df
+        self.col_name = col_name
+        self.col_class = col_class
+        self.weight1 = weight1
+        self.weight2 = weight2
+        self.weight3 = weight3
+        self.weight4 = weight4
+
         self.target_counts = dict()
 
         # 遺伝的アルゴリズムのセットアップ
@@ -71,17 +69,21 @@ class GeneticAlgorithm:
 
         self.toolbox = base.Toolbox()
         self.toolbox.register("attr_group", self.init_individual)
-        self.toolbox.register("individual", tools.initIterate, creator.Individual, self.toolbox.attr_group)
+        self.toolbox.register(
+            "individual", tools.initIterate, creator.Individual, self.toolbox.attr_group
+        )
         self.toolbox.register("population", tools.initRepeat, list, self.toolbox.individual)
 
         self.toolbox.register("mate", self.two_point_crossover)
         self.toolbox.register("mutate", tools.mutShuffleIndexes, indpb=self.mutation_indpb)
 
-        self.toolbox.register("select_best", tools.selBest, k=self.k_select_best)  # 最も適応度が高い個体を5つ選択
-        self.toolbox.register("select_tournament", tools.selTournament, tournsize=self.tournsize)  # トーナメント選択を実行
+        self.toolbox.register("select_best", tools.selBest, k=self.k_select_best)  # 最も適応度が高い個体を選択
+        self.toolbox.register(
+            "select_tournament", tools.selTournament, tournsize=self.tournsize
+        )  # トーナメント選択を実行
         self.toolbox.register("select", self.combined_selection)
         # self.toolbox.register("select", tools.selRoulette)
-        
+
         self.toolbox.register("evaluate", self.evaluate)
 
     # 個体を初期化する関数（リストをシャッフル）
@@ -95,9 +97,11 @@ class GeneticAlgorithm:
         # 最も適応度が高い個体をいくつか選択
         best_individuals = self.toolbox.select_best(population)
         # 残りの個体をトーナメント選択で選択
-        rest_individuals = self.toolbox.select_tournament(population, k=len(population) - len(best_individuals))
+        rest_individuals = self.toolbox.select_tournament(
+            population, k=len(population) - len(best_individuals)
+        )
         # 選択された個体を結合し、全体としてk個体選ぶ
-        return best_individuals + rest_individuals[:k - len(best_individuals)]
+        return best_individuals + rest_individuals[: k - len(best_individuals)]
 
     def two_point_crossover(self, parent1, parent2):
         # 2点交叉
@@ -134,29 +138,35 @@ class GeneticAlgorithm:
     # 個体を評価する関数（評価関数）
     def evaluate(self, individual):
         # スコアリストを計算
-        score_lists = calculate_score_details(df, individual)
+        score_lists = calculate_score_details(
+            self.df, individual, self.col_name, self.col_class
+        )
         # 合計スコアを計算
-        total_score = calculate_total_score(score_lists)
+        total_score = calculate_total_score(
+            score_lists, self.weight1, self.weight2, self.weight3, self.weight4
+        )
 
         return (total_score,)
 
     # アルゴリズムの実行
     def run(self):
-        random.seed(42)
+        # random.seed(42)
         population = self.toolbox.population(n=self.population_size)
         # 統計情報の設定
         stats = tools.Statistics(lambda ind: ind.fitness.values)
         stats.register("min", np.min)
         stats.register("avg", np.mean)
         # 遺伝的アルゴリズムの実行
-        population, logbook = algorithms.eaSimple(population, self.toolbox, cxpb=self.cxpb, mutpb=self.mutation_rate,
-                                                  ngen=self.generations, stats=stats, verbose=True)
-        # スコアが0で早期終了
-        for gen, record in enumerate(logbook):
-            if record["min"] <= 17:  # 最小スコアが0の場合
-                print(f"Score reached 0 at generation {gen}. Terminating early.")
-                break
-        
+        population, logbook = algorithms.eaSimple(
+            population,
+            self.toolbox,
+            cxpb=self.cxpb,
+            mutpb=self.mutation_rate,
+            ngen=self.generations,
+            stats=stats,
+            verbose=True,
+        )
+
         # 最良の個体の表示
         best_individual = tools.selBest(population, k=1)[0]
         scores_best_individual, final_groups = self.display_result(best_individual)
@@ -174,48 +184,65 @@ class GeneticAlgorithm:
             groups[group_number].append(self.names[i])
         print(self.names)
         print(best_individual)
-        scores_best_individual = calculate_score_details(df, best_individual)
-        print(scores_best_individual)
+        score_lists = calculate_score_details(
+            self.df, best_individual, self.col_name, self.col_class
+        )
+        print(score_lists)
 
         final_groups = [group for group in groups.values() if len(group) >= 1]
         for group_num, members in enumerate(final_groups, start=1):
             print(f"Group {group_num}: {members}")
-        return scores_best_individual, final_groups
+        return score_lists, final_groups
 
     # 結果のエクセルへの出力
     def export_excel(self, scores_best_individual, final_groups):
         df1 = pd.DataFrame(final_groups)
         df2 = pd.DataFrame(scores_best_individual)
-        print(df1)
-        print(df2)
         print(pd.concat([df1, df2.T], axis=1))
 
+
 if __name__ == "__main__":
-    # 定数の定義
-    EXCEL_NAME = "names.xlsx"
-    SHEET_NAME = "名簿"
+    # エクセルファイルからの入力値の取得
+    # ExcelTableExtractorクラスの使用例
+    extractor = ExcelTableExtractor(
+        filename="settings.xlsx",
+        worksheet_name="settings",
+        table_name="テーブル1",
+        item_column_name="変数名",  # 「項目」列の名前を指定
+        value_column_name="入力値",  # 「入力値」列の名前を指定
+    )
+    extractor.open_workbook()
 
-    # 列名
-    COL_NAME = "氏名"
-    COL_TARGET = "対象"
-    COL_BU = "部・室"
-    COL_KA = "課"
-    # 追加列名
-    COL_CLASS = "class"
-    COL_OUTPUT = "グループ分け"  # グループ分け名
+    # テーブル1
+    EXCEL_NAME = extractor.get_value("EXCEL_NAME")
+    SHEET_NAME = extractor.get_value("SHEET_NAME")
+    COL_NAME = extractor.get_value("COL_NAME")
+    COL_TARGET = extractor.get_value("COL_TARGET")
+    COL_CLASS = extractor.get_value("COL_CLASS")
 
-    # グループ分け設定
-    GROUP_PEOPLE_MIN = 4  # 1グループあたりの最少人数（割り切れない場合はグループによって+1人）
+    # テーブル2
+    extractor.table = "テーブル2"
+    MINIMIZE_DUPLICATE_AFFILIATIONS = extractor.get_value(
+        "MINIMIZE_DUPLICATE_AFFILIATIONS"
+    )
+    GROUP_SIZE = extractor.get_value("GROUP_SIZE")
+    ADJUST_GROUP_SIZE_FOR_REMAINDER = extractor.get_value("ADJUST_GROUP_SIZE_FOR_REMAINDER")
 
-    # 探索諸設定
-    N = 1000
+    # テーブル3
+    extractor.table = "テーブル3"
+    WEIGHT1 = extractor.get_value("WEIGHT1")
+    WEIGHT2 = extractor.get_value("WEIGHT2")
+    WEIGHT3 = extractor.get_value("WEIGHT3")
+    WEIGHT4 = extractor.get_value("WEIGHT4")
+    population_size = extractor.get_value("population_size")
+    generations = extractor.get_value("generations")
+    mutation_rate = extractor.get_value("mutation_rate")
+    mutation_indpb = extractor.get_value("mutation_indpb")
+    k_select_best = extractor.get_value("k_select_best")
+    tournsize = extractor.get_value("tournsize")
+    cxpb = extractor.get_value("cxpb")
 
-    # 重みづけ
-    PAST_OUT_N = 3
-    WEIGHT1 = 1000
-    WEIGHT2 = 4
-    WEIGHT3 = 2
-    WEIGHT4 = 1
+    extractor.close_workbook()
 
     # 初期データ処理
     df_origin = pd.read_excel(EXCEL_NAME, sheet_name=SHEET_NAME)
@@ -225,7 +252,6 @@ if __name__ == "__main__":
     if len(df) != len(set(list(df[COL_NAME]))):
         print("名前が重複している人がいます。")
         sys.exit()
-    df[COL_CLASS] = df[COL_BU] + df[COL_KA]
     classes = list(set(df[COL_CLASS]))
     numbered_dict = {value: index for index, value in enumerate(classes)}
     df[COL_CLASS] = df[COL_CLASS].replace(numbered_dict)
@@ -233,13 +259,20 @@ if __name__ == "__main__":
 
     ga = GeneticAlgorithm(
         names=list(df[COL_NAME]),
-        group_size=4,
-        population_size=700,
-        generations=25,
-        mutation_rate=0.1,
-        mutation_indpb=0.2,
-        k_select_best=5,
-        tournsize=3,
-        cxpb=0.8
+        group_size=GROUP_SIZE,
+        population_size=population_size,
+        generations=generations,
+        mutation_rate=mutation_rate,
+        mutation_indpb=mutation_indpb,
+        k_select_best=k_select_best,
+        tournsize=tournsize,
+        cxpb=cxpb,
+        df=df,
+        col_name=COL_NAME,
+        col_class=COL_CLASS,
+        weight1=WEIGHT1,
+        weight2=WEIGHT2,
+        weight3=WEIGHT3,
+        weight4=WEIGHT4,
     )
     ga.run()
