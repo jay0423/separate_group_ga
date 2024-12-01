@@ -4,60 +4,44 @@ import numpy as np
 import pandas as pd
 from collections import Counter, defaultdict
 import sys
-import collections
 
 from src import init_individual
-import openpyxl
 
 from src.settings_xlsx import ExcelTableExtractor
 
-
-# リストの中から最も頻出な要素の数を返す。同じクラスの人数をカウントする関数
-def most_frequent_element_count(lst):
-    if not lst:
-        return 0  # リストが空の場合、0を返す
-    element_counts = Counter(lst)  # リスト内の要素の出現回数をカウント
-    most_common = element_counts.most_common(1)  # 最も多い要素とそのカウントを取得
-    return most_common[0][1] - 1
-
-# グループリストと名前リストからグループ分けを行い、スコアを計算する関数
-def calculate_score_details(df, group_list):
-    name_list = list(df["氏名"])
-    grouped_names = defaultdict(list)
-    for group, person in zip(group_list, name_list):
-        grouped_names[group].append(person)
-    
-    target_cols = [COL_CLASS] + [COL_OUTPUT + str(i+1) for i in range(PAST_OUT_N)]
-    score_lists = []
-    
-    for target_col in target_cols:
-        target_dict = df.set_index("氏名")[target_col].to_dict()
-        group_scores = []
-        for group in grouped_names.values():
-            element_list = [target_dict.get(name) for name in group if target_dict.get(name) is not None]
-            group_scores.append(most_frequent_element_count(element_list))
-        score_lists.append(group_scores)
-    
-    return score_lists
-
-# スコアリストを基に合計スコアを算出する関数
-def calculate_total_score(score_lists):
-    total_score = 0
-    total_score += WEIGHT1 * max(score_lists[0])
-    total_score += WEIGHT2 * sum(score_lists[0])
-    
-    for score_list in score_lists[1:]:
-        total_score += WEIGHT3 * max(score_list)
-        total_score += WEIGHT4 * sum(score_list)
-    
-    return total_score
+# 評価関数をインポート
+from src.evaluation_functions import (
+    most_frequent_element_count,
+    calculate_score_details,
+    calculate_total_score,
+)
 
 class GeneticAlgorithm:
-    def __init__(self, names, group_size, population_size, generations, mutation_rate, mutation_indpb, k_select_best, tournsize, cxpb):
+    def __init__(
+        self,
+        names,
+        group_size,
+        population_size,
+        generations,
+        mutation_rate,
+        mutation_indpb,
+        k_select_best,
+        tournsize,
+        cxpb,
+        df,
+        col_name,
+        col_class,
+        col_output,
+        past_out_n,
+        weight1,
+        weight2,
+        weight3,
+        weight4,
+    ):
         self.names = names
         self.group_size = group_size
         self.population_size = population_size
-        
+
         # 遺伝的アルゴリズムパラメータ
         self.generations = generations
         self.mutation_rate = mutation_rate
@@ -65,7 +49,18 @@ class GeneticAlgorithm:
         self.k_select_best = k_select_best
         self.tournsize = tournsize
         self.cxpb = cxpb
-        
+
+        # 追加のパラメータ
+        self.df = df
+        self.col_name = col_name
+        self.col_class = col_class
+        self.col_output = col_output
+        self.past_out_n = past_out_n
+        self.weight1 = weight1
+        self.weight2 = weight2
+        self.weight3 = weight3
+        self.weight4 = weight4
+
         self.target_counts = dict()
 
         # 遺伝的アルゴリズムのセットアップ
@@ -80,11 +75,11 @@ class GeneticAlgorithm:
         self.toolbox.register("mate", self.two_point_crossover)
         self.toolbox.register("mutate", tools.mutShuffleIndexes, indpb=self.mutation_indpb)
 
-        self.toolbox.register("select_best", tools.selBest, k=self.k_select_best)  # 最も適応度が高い個体を5つ選択
+        self.toolbox.register("select_best", tools.selBest, k=self.k_select_best)  # 最も適応度が高い個体を選択
         self.toolbox.register("select_tournament", tools.selTournament, tournsize=self.tournsize)  # トーナメント選択を実行
         self.toolbox.register("select", self.combined_selection)
         # self.toolbox.register("select", tools.selRoulette)
-        
+
         self.toolbox.register("evaluate", self.evaluate)
 
     # 個体を初期化する関数（リストをシャッフル）
@@ -100,7 +95,7 @@ class GeneticAlgorithm:
         # 残りの個体をトーナメント選択で選択
         rest_individuals = self.toolbox.select_tournament(population, k=len(population) - len(best_individuals))
         # 選択された個体を結合し、全体としてk個体選ぶ
-        return best_individuals + rest_individuals[:k - len(best_individuals)]
+        return best_individuals + rest_individuals[: k - len(best_individuals)]
 
     def two_point_crossover(self, parent1, parent2):
         # 2点交叉
@@ -137,9 +132,13 @@ class GeneticAlgorithm:
     # 個体を評価する関数（評価関数）
     def evaluate(self, individual):
         # スコアリストを計算
-        score_lists = calculate_score_details(df, individual)
+        score_lists = calculate_score_details(
+            self.df, individual, self.col_name, self.col_class, self.col_output, self.past_out_n
+        )
         # 合計スコアを計算
-        total_score = calculate_total_score(score_lists)
+        total_score = calculate_total_score(
+            score_lists, self.weight1, self.weight2, self.weight3, self.weight4
+        )
 
         return (total_score,)
 
@@ -152,14 +151,16 @@ class GeneticAlgorithm:
         stats.register("min", np.min)
         stats.register("avg", np.mean)
         # 遺伝的アルゴリズムの実行
-        population, logbook = algorithms.eaSimple(population, self.toolbox, cxpb=self.cxpb, mutpb=self.mutation_rate,
-                                                  ngen=self.generations, stats=stats, verbose=True)
-        # スコアが0で早期終了
-        for gen, record in enumerate(logbook):
-            if record["min"] <= 17:  # 最小スコアが0の場合
-                print(f"Score reached 0 at generation {gen}. Terminating early.")
-                break
-        
+        population, logbook = algorithms.eaSimple(
+            population,
+            self.toolbox,
+            cxpb=self.cxpb,
+            mutpb=self.mutation_rate,
+            ngen=self.generations,
+            stats=stats,
+            verbose=True,
+        )
+
         # 最良の個体の表示
         best_individual = tools.selBest(population, k=1)[0]
         scores_best_individual, final_groups = self.display_result(best_individual)
@@ -177,7 +178,9 @@ class GeneticAlgorithm:
             groups[group_number].append(self.names[i])
         print(self.names)
         print(best_individual)
-        scores_best_individual = calculate_score_details(df, best_individual)
+        scores_best_individual = calculate_score_details(
+            self.df, best_individual, self.col_name, self.col_class, self.col_output, self.past_out_n
+        )
         print(scores_best_individual)
 
         final_groups = [group for group in groups.values() if len(group) >= 1]
@@ -191,15 +194,16 @@ class GeneticAlgorithm:
         df2 = pd.DataFrame(scores_best_individual)
         print(pd.concat([df1, df2.T], axis=1))
 
+
 if __name__ == "__main__":
     # エクセルファイルからの入力値の取得
     # ExcelTableExtractorクラスの使用例
     extractor = ExcelTableExtractor(
-        filename='settings.xlsx',
-        worksheet_name='settings',
-        table_name='テーブル1',
-        item_column_name='変数名',     # 「項目」列の名前を指定
-        value_column_name='入力値'    # 「入力値」列の名前を指定
+        filename="settings.xlsx",
+        worksheet_name="settings",
+        table_name="テーブル1",
+        item_column_name="変数名",  # 「項目」列の名前を指定
+        value_column_name="入力値",  # 「入力値」列の名前を指定
     )
     extractor.open_workbook()
 
@@ -229,15 +233,14 @@ if __name__ == "__main__":
     k_select_best = extractor.get_value("k_select_best")
     tournsize = extractor.get_value("tournsize")
     cxpb = extractor.get_value("cxpb")
-    
+
     extractor.close_workbook()
 
     # 追加列名
     COL_OUTPUT = "グループ分け"  # グループ分け名
 
     # 重みづけ
-    PAST_OUT_N = 3 ####!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    
+    PAST_OUT_N = 3  ####!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
     # 初期データ処理
     df_origin = pd.read_excel(EXCEL_NAME, sheet_name=SHEET_NAME)
@@ -261,6 +264,15 @@ if __name__ == "__main__":
         mutation_indpb=mutation_indpb,
         k_select_best=k_select_best,
         tournsize=tournsize,
-        cxpb=cxpb
+        cxpb=cxpb,
+        df=df,
+        col_name=COL_NAME,
+        col_class=COL_CLASS,
+        col_output=COL_OUTPUT,
+        past_out_n=PAST_OUT_N,
+        weight1=WEIGHT1,
+        weight2=WEIGHT2,
+        weight3=WEIGHT3,
+        weight4=WEIGHT4,
     )
     ga.run()
