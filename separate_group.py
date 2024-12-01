@@ -7,6 +7,9 @@ import sys
 import collections
 
 from src import init_individual
+import openpyxl
+
+from src.settings_xlsx import ExcelTableExtractor
 
 
 # リストの中から最も頻出な要素の数を返す。同じクラスの人数をカウントする関数
@@ -186,36 +189,55 @@ class GeneticAlgorithm:
     def export_excel(self, scores_best_individual, final_groups):
         df1 = pd.DataFrame(final_groups)
         df2 = pd.DataFrame(scores_best_individual)
-        print(df1)
-        print(df2)
         print(pd.concat([df1, df2.T], axis=1))
 
 if __name__ == "__main__":
-    # 定数の定義
-    EXCEL_NAME = "names.xlsx"
-    SHEET_NAME = "名簿"
+    # エクセルファイルからの入力値の取得
+    # ExcelTableExtractorクラスの使用例
+    extractor = ExcelTableExtractor(
+        filename='settings.xlsx',
+        worksheet_name='settings',
+        table_name='テーブル1',
+        item_column_name='変数名',     # 「項目」列の名前を指定
+        value_column_name='入力値'    # 「入力値」列の名前を指定
+    )
+    extractor.open_workbook()
 
-    # 列名
-    COL_NAME = "氏名"
-    COL_TARGET = "対象"
-    COL_BU = "部・室"
-    COL_KA = "課"
+    # テーブル1
+    EXCEL_NAME = extractor.get_value("EXCEL_NAME")
+    SHEET_NAME = extractor.get_value("SHEET_NAME")
+    COL_NAME = extractor.get_value("COL_NAME")
+    COL_TARGET = extractor.get_value("COL_TARGET")
+    COL_CLASS = extractor.get_value("COL_CLASS")
+
+    # テーブル2
+    extractor.table = "テーブル2"
+    MINIMIZE_DUPLICATE_AFFILIATIONS = extractor.get_value("MINIMIZE_DUPLICATE_AFFILIATIONS")
+    GROUP_SIZE = extractor.get_value("GROUP_SIZE")
+    ADJUST_GROUP_SIZE_FOR_REMAINDER = extractor.get_value("ADJUST_GROUP_SIZE_FOR_REMAINDER")
+
+    # テーブル3
+    extractor.table = "テーブル3"
+    WEIGHT1 = extractor.get_value("WEIGHT1")
+    WEIGHT2 = extractor.get_value("WEIGHT2")
+    WEIGHT3 = extractor.get_value("WEIGHT3")
+    WEIGHT4 = extractor.get_value("WEIGHT4")
+    population_size = extractor.get_value("population_size")
+    generations = extractor.get_value("generations")
+    mutation_rate = extractor.get_value("mutation_rate")
+    mutation_indpb = extractor.get_value("mutation_indpb")
+    k_select_best = extractor.get_value("k_select_best")
+    tournsize = extractor.get_value("tournsize")
+    cxpb = extractor.get_value("cxpb")
+    
+    extractor.close_workbook()
+
     # 追加列名
-    COL_CLASS = "class"
     COL_OUTPUT = "グループ分け"  # グループ分け名
 
-    # グループ分け設定
-    GROUP_PEOPLE_MIN = 4  # 1グループあたりの最少人数（割り切れない場合はグループによって+1人）
-
-    # 探索諸設定
-    N = 1000
-
     # 重みづけ
-    PAST_OUT_N = 3
-    WEIGHT1 = 1000
-    WEIGHT2 = 4
-    WEIGHT3 = 2
-    WEIGHT4 = 1
+    PAST_OUT_N = 3 ####!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    
 
     # 初期データ処理
     df_origin = pd.read_excel(EXCEL_NAME, sheet_name=SHEET_NAME)
@@ -225,7 +247,6 @@ if __name__ == "__main__":
     if len(df) != len(set(list(df[COL_NAME]))):
         print("名前が重複している人がいます。")
         sys.exit()
-    df[COL_CLASS] = df[COL_BU] + df[COL_KA]
     classes = list(set(df[COL_CLASS]))
     numbered_dict = {value: index for index, value in enumerate(classes)}
     df[COL_CLASS] = df[COL_CLASS].replace(numbered_dict)
@@ -233,13 +254,13 @@ if __name__ == "__main__":
 
     ga = GeneticAlgorithm(
         names=list(df[COL_NAME]),
-        group_size=4,
-        population_size=700,
-        generations=25,
-        mutation_rate=0.1,
-        mutation_indpb=0.2,
-        k_select_best=5,
-        tournsize=3,
-        cxpb=0.8
+        group_size=GROUP_SIZE,
+        population_size=population_size,
+        generations=generations,
+        mutation_rate=mutation_rate,
+        mutation_indpb=mutation_indpb,
+        k_select_best=k_select_best,
+        tournsize=tournsize,
+        cxpb=cxpb
     )
     ga.run()
