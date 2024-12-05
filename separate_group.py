@@ -203,103 +203,105 @@ class GeneticAlgorithm:
 
 
 if __name__ == "__main__":
-    # エクセルファイルからの入力値の取得
-    COL_OUTPUT="グループ分け"
-    extractor = ExcelTableExtractor(
-        filename="settings.xlsx",
-        worksheet_name="settings",
-        table_name="テーブル1",
-        item_column_name="変数名",  # 「項目」列の名前を指定
-        value_column_name="入力値",  # 「入力値」列の名前を指定
-    )
-    extractor.open_workbook()
+    scores = []
+    for i in range(7):
+        # エクセルファイルからの入力値の取得
+        COL_OUTPUT="グループ分け"
+        extractor = ExcelTableExtractor(
+            filename="settings.xlsx",
+            worksheet_name="settings",
+            table_name="テーブル1",
+            item_column_name="変数名",  # 「項目」列の名前を指定
+            value_column_name="入力値",  # 「入力値」列の名前を指定
+        )
+        extractor.open_workbook()
 
-    # テーブル1
-    EXCEL_NAME = extractor.get_value("EXCEL_NAME")
-    SHEET_NAME = extractor.get_value("SHEET_NAME")
-    COL_NAME = extractor.get_value("COL_NAME")
-    COL_TARGET = extractor.get_value("COL_TARGET")
-    COL_CLASS = extractor.get_value("COL_CLASS")
+        # テーブル1
+        EXCEL_NAME = extractor.get_value("EXCEL_NAME")
+        SHEET_NAME = extractor.get_value("SHEET_NAME")
+        COL_NAME = extractor.get_value("COL_NAME")
+        COL_TARGET = extractor.get_value("COL_TARGET")
+        COL_CLASS = extractor.get_value("COL_CLASS")
 
-    # テーブル2
-    extractor.table = "テーブル2"
-    MINIMIZE_DUPLICATE_AFFILIATIONS = extractor.get_value(
-        "MINIMIZE_DUPLICATE_AFFILIATIONS"
-    )
-    GROUP_SIZE = extractor.get_value("GROUP_SIZE")
-    ADJUST_GROUP_SIZE_FOR_REMAINDER = extractor.get_value("ADJUST_GROUP_SIZE_FOR_REMAINDER")
+        # テーブル2
+        extractor.table = "テーブル2"
+        MINIMIZE_DUPLICATE_AFFILIATIONS = extractor.get_value(
+            "MINIMIZE_DUPLICATE_AFFILIATIONS"
+        )
+        GROUP_SIZE = extractor.get_value("GROUP_SIZE")
+        ADJUST_GROUP_SIZE_FOR_REMAINDER = extractor.get_value("ADJUST_GROUP_SIZE_FOR_REMAINDER")
 
-    # テーブル3
-    extractor.table = "テーブル3"
-    WEIGHT1 = extractor.get_value("WEIGHT1")
-    WEIGHT2 = extractor.get_value("WEIGHT2")
-    WEIGHT3 = extractor.get_value("WEIGHT3")
-    WEIGHT4 = extractor.get_value("WEIGHT4")
-    population_size = extractor.get_value("population_size")
-    generations = extractor.get_value("generations")
-    mutation_rate = extractor.get_value("mutation_rate")
-    mutation_indpb = extractor.get_value("mutation_indpb")
-    k_select_best = extractor.get_value("k_select_best")
-    tournsize = extractor.get_value("tournsize")
-    cxpb = extractor.get_value("cxpb")
+        # テーブル3
+        extractor.table = "テーブル3"
+        WEIGHT1 = extractor.get_value("WEIGHT1")
+        WEIGHT2 = extractor.get_value("WEIGHT2")
+        WEIGHT3 = extractor.get_value("WEIGHT3")
+        WEIGHT4 = extractor.get_value("WEIGHT4")
+        population_size = extractor.get_value("population_size")
+        generations = extractor.get_value("generations")
+        mutation_rate = extractor.get_value("mutation_rate")
+        mutation_indpb = extractor.get_value("mutation_indpb")
+        k_select_best = extractor.get_value("k_select_best")
+        tournsize = extractor.get_value("tournsize")
+        cxpb = extractor.get_value("cxpb")
 
-    extractor.close_workbook()
+        extractor.close_workbook()
 
-    # 初期データ処理
-    df_origin = pd.read_excel(EXCEL_NAME, sheet_name=SHEET_NAME)
-    df = df_origin.copy()
-    df = df[df[COL_TARGET] == 1]
-    print(len(df), len(set(list(df[COL_NAME]))))
-    if len(df) != len(set(list(df[COL_NAME]))):
-        print("名前が重複している人がいます。")
-        sys.exit()
-    classes = list(set(df[COL_CLASS]))
-    numbered_dict = {value: index for index, value in enumerate(classes)}
-    df[COL_CLASS] = df[COL_CLASS].replace(numbered_dict)
-    print(len(df))
+        # 初期データ処理
+        df_origin = pd.read_excel(EXCEL_NAME, sheet_name=SHEET_NAME)
+        df = df_origin.copy()
+        df = df[df[COL_TARGET] == 1]
+        print(len(df), len(set(list(df[COL_NAME]))))
+        if len(df) != len(set(list(df[COL_NAME]))):
+            print("名前が重複している人がいます。")
+            sys.exit()
+        classes = list(set(df[COL_CLASS]))
+        numbered_dict = {value: index for index, value in enumerate(classes)}
+        df[COL_CLASS] = df[COL_CLASS].replace(numbered_dict)
+        print(len(df))
 
-    ga = GeneticAlgorithm(
-        names=list(df[COL_NAME]),
-        group_size=GROUP_SIZE,
-        population_size=population_size,
-        generations=generations,
-        mutation_rate=mutation_rate,
-        mutation_indpb=mutation_indpb,
-        k_select_best=k_select_best,
-        tournsize=tournsize,
-        cxpb=cxpb,
-        df=df,
-        col_name=COL_NAME,
-        col_class=COL_CLASS,
-        weight1=WEIGHT1,
-        weight2=WEIGHT2,
-        weight3=WEIGHT3,
-        weight4=WEIGHT4,
-        COL_OUTPUT=COL_OUTPUT
-    )
-    best_individual, final_df = ga.run()
-    
-    
-    
-    # 出力処理
-    print(best_individual)
-    print(final_df)
-    past_out_n = get_past_out_n(df_origin, COL_OUTPUT)
-    new_col = COL_OUTPUT+str(past_out_n+1)
-    df[new_col] = best_individual
-    group_df = pd.concat([df_origin, df[new_col]],axis=1)
+        ga = GeneticAlgorithm(
+            names=list(df[COL_NAME]),
+            group_size=GROUP_SIZE,
+            population_size=population_size,
+            generations=generations,
+            mutation_rate=mutation_rate,
+            mutation_indpb=mutation_indpb,
+            k_select_best=k_select_best,
+            tournsize=tournsize,
+            cxpb=cxpb,
+            df=df,
+            col_name=COL_NAME,
+            col_class=COL_CLASS,
+            weight1=WEIGHT1,
+            weight2=WEIGHT2,
+            weight3=WEIGHT3,
+            weight4=WEIGHT4,
+            COL_OUTPUT=COL_OUTPUT
+        )
+        best_individual, final_df = ga.run()
+        
+        scores.append(ga.evaluate(best_individual)[0])
+        
+        # 出力処理
+        print(best_individual)
+        print(final_df)
+        past_out_n = get_past_out_n(df_origin, COL_OUTPUT)
+        new_col = COL_OUTPUT+str(past_out_n+1)
+        df[new_col] = best_individual
+        group_df = pd.concat([df_origin, df[new_col]],axis=1)
 
-    # 既存のExcelファイルのシートをすべて読み込む
-    excel_file = pd.ExcelFile(EXCEL_NAME)
-    sheet_names = excel_file.sheet_names
-    sheet_dict = {sheet: excel_file.parse(sheet) for sheet in sheet_names}
+        # 既存のExcelファイルのシートをすべて読み込む
+        excel_file = pd.ExcelFile(EXCEL_NAME)
+        sheet_names = excel_file.sheet_names
+        sheet_dict = {sheet: excel_file.parse(sheet) for sheet in sheet_names}
 
-    # 新しいデータを追加
-    sheet_dict[SHEET_NAME] = group_df
-    sheet_dict[new_col] = final_df
+        # 新しいデータを追加
+        sheet_dict[SHEET_NAME] = group_df
+        sheet_dict[new_col] = final_df
 
-    # すべてのシートを同じExcelファイルに書き込む
-    with pd.ExcelWriter(EXCEL_NAME) as writer:
-        for sheet_name, dataframe in sheet_dict.items():
-            dataframe.to_excel(writer, sheet_name=sheet_name, index=False)
-    
+        # すべてのシートを同じExcelファイルに書き込む
+        with pd.ExcelWriter(EXCEL_NAME) as writer:
+            for sheet_name, dataframe in sheet_dict.items():
+                dataframe.to_excel(writer, sheet_name=sheet_name, index=False)
+    print(scores)
