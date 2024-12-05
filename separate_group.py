@@ -17,7 +17,6 @@ from src.evaluation_functions import (
     calculate_score_details,
     calculate_total_score,
     get_past_out_n,  # 新しく追加
-    COL_OUTPUT,      # COL_OUTPUTをインポート
 )
 
 class GeneticAlgorithm:
@@ -39,10 +38,12 @@ class GeneticAlgorithm:
         weight2,
         weight3,
         weight4,
+        COL_OUTPUT
     ):
         self.names = names
         self.group_size = group_size
         self.population_size = population_size
+        self.COL_OUTPUT = COL_OUTPUT
 
         # 遺伝的アルゴリズムパラメータ
         self.generations = generations
@@ -139,7 +140,7 @@ class GeneticAlgorithm:
     def evaluate(self, individual):
         # スコアリストを計算
         score_lists = calculate_score_details(
-            self.df, individual, self.col_name, self.col_class
+            self.df, individual, self.col_name, self.col_class, self.COL_OUTPUT
         )
         # 合計スコアを計算
         total_score = calculate_total_score(
@@ -170,7 +171,11 @@ class GeneticAlgorithm:
         # 最良の個体の表示
         best_individual = tools.selBest(population, k=1)[0]
         scores_best_individual, final_groups = self.display_result(best_individual)
-        self.export_excel(scores_best_individual, final_groups)
+        # self.export_excel(scores_best_individual, final_groups)
+        df1 = pd.DataFrame(final_groups)
+        df2 = pd.DataFrame(scores_best_individual)
+        final_df = pd.concat([df1, df2.T], axis=1)
+        return best_individual, final_df
 
     # 結果の表示
     def display_result(self, best_individual):
@@ -182,28 +187,24 @@ class GeneticAlgorithm:
             if group_number not in groups:
                 groups[group_number] = []
             groups[group_number].append(self.names[i])
+        groups = dict(sorted(groups.items()))
         print(self.names)
         print(best_individual)
         score_lists = calculate_score_details(
-            self.df, best_individual, self.col_name, self.col_class
+            self.df, best_individual, self.col_name, self.col_class, self.COL_OUTPUT
         )
         print(score_lists)
 
         final_groups = [group for group in groups.values() if len(group) >= 1]
+        print(groups)
         for group_num, members in enumerate(final_groups, start=1):
             print(f"Group {group_num}: {members}")
         return score_lists, final_groups
 
-    # 結果のエクセルへの出力
-    def export_excel(self, scores_best_individual, final_groups):
-        df1 = pd.DataFrame(final_groups)
-        df2 = pd.DataFrame(scores_best_individual)
-        print(pd.concat([df1, df2.T], axis=1))
-
 
 if __name__ == "__main__":
     # エクセルファイルからの入力値の取得
-    # ExcelTableExtractorクラスの使用例
+    COL_OUTPUT="グループ分け"
     extractor = ExcelTableExtractor(
         filename="settings.xlsx",
         worksheet_name="settings",
@@ -274,5 +275,31 @@ if __name__ == "__main__":
         weight2=WEIGHT2,
         weight3=WEIGHT3,
         weight4=WEIGHT4,
+        COL_OUTPUT=COL_OUTPUT
     )
-    ga.run()
+    best_individual, final_df = ga.run()
+    
+    
+    
+    # 出力処理
+    print(best_individual)
+    print(final_df)
+    past_out_n = get_past_out_n(df_origin, COL_OUTPUT)
+    new_col = COL_OUTPUT+str(past_out_n+1)
+    df[new_col] = best_individual
+    group_df = pd.concat([df_origin, df[new_col]],axis=1)
+
+    # 既存のExcelファイルのシートをすべて読み込む
+    excel_file = pd.ExcelFile(EXCEL_NAME)
+    sheet_names = excel_file.sheet_names
+    sheet_dict = {sheet: excel_file.parse(sheet) for sheet in sheet_names}
+
+    # 新しいデータを追加
+    sheet_dict[SHEET_NAME] = group_df
+    sheet_dict[new_col] = final_df
+
+    # すべてのシートを同じExcelファイルに書き込む
+    with pd.ExcelWriter(EXCEL_NAME) as writer:
+        for sheet_name, dataframe in sheet_dict.items():
+            dataframe.to_excel(writer, sheet_name=sheet_name, index=False)
+    

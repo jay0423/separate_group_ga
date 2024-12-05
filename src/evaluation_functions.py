@@ -1,9 +1,6 @@
 import random
 from collections import Counter, defaultdict
 
-# グループ分けの列名の接頭辞
-COL_OUTPUT = "グループ分け"
-
 # リストの中から最も頻出な要素の数を返す。同じクラスの人数をカウントする関数
 def most_frequent_element_count(lst):
     if not lst:
@@ -13,7 +10,7 @@ def most_frequent_element_count(lst):
     return most_common[0][1] - 1
 
 # dfから過去のグループ分けの数を取得する関数
-def get_past_out_n(df):
+def get_past_out_n(df, COL_OUTPUT):
     past_out_columns = [
         col for col in df.columns if col.startswith(COL_OUTPUT) and col[len(COL_OUTPUT):].isdigit()
     ]
@@ -21,8 +18,8 @@ def get_past_out_n(df):
     return past_out_n
 
 # グループリストと名前リストからグループ分けを行い、スコアを計算する関数
-def calculate_score_details(df, group_list, col_name, col_class):
-    past_out_n = get_past_out_n(df)
+def calculate_score_details(df, group_list, col_name, col_class, COL_OUTPUT):
+    past_out_n = get_past_out_n(df, COL_OUTPUT)
     name_list = list(df[col_name])
     grouped_names = defaultdict(list)
     for group, person in zip(group_list, name_list):
