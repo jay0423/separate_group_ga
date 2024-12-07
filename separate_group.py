@@ -77,7 +77,8 @@ class GeneticAlgorithm:
         )
         self.toolbox.register("population", tools.initRepeat, list, self.toolbox.individual)
 
-        self.toolbox.register("mate", self.two_point_crossover)
+        # self.toolbox.register("mate", self.two_point_crossover)
+        self.toolbox.register("mate", self.random_crossover)
         self.toolbox.register("mutate", tools.mutShuffleIndexes, indpb=self.mutation_indpb)
 
         self.toolbox.register("select_best", tools.selBest, k=self.k_select_best)  # 最も適応度が高い個体を選択
@@ -106,6 +107,46 @@ class GeneticAlgorithm:
         # 選択された個体を結合し、全体としてk個体選ぶ
         return best_individuals + rest_individuals[: k - len(best_individuals)]
 
+    def random_crossover(self, parent1, parent2):
+        if random.random() < 0.5:
+            return self.custom_crossover(parent1, parent2)
+        else:
+            return self.two_point_crossover(parent1, parent2)
+               
+    def custom_crossover(self, parent1, parent2):  
+        # parent1とparent2に対してshuffle_selected_elementsを適用  
+        child1 = self.shuffle_selected_elements(parent1)  
+        child2 = self.shuffle_selected_elements(parent2)  
+    
+        # もう一度shuffle_selected_elementsを適用  
+        # child1 = self.shuffle_selected_elements(child1)  
+        # child2 = self.shuffle_selected_elements(child2)  
+    
+        return creator.Individual(child1), creator.Individual(child2)  
+    
+    def shuffle_selected_elements(self, arr):
+        unique_elements = list(set(arr))
+        # 最小値と最大値の範囲からランダムに2つの値を選ぶ  
+        selected_elements = random.sample(unique_elements, 2)
+        val1, val2 = selected_elements[0], selected_elements[1]
+
+        # val1 と val2 のインデックスを取得  
+        indices_val1 = [i for i, x in enumerate(arr) if x == val1]
+        indices_val2 = [i for i, x in enumerate(arr) if x == val2]
+
+        # val1 と val2 のインデックスを合わせる  
+        all_indices = indices_val1 + indices_val2
+        random.shuffle(all_indices)
+
+        # シャッフルされたインデックスに基づいて新しい配列を作成  
+        shuffled_arr = arr.copy()
+        for i, idx in enumerate(indices_val1):
+            shuffled_arr[idx] = arr[all_indices[i]]
+        for i, idx in enumerate(indices_val2):
+            shuffled_arr[idx] = arr[all_indices[len(indices_val1) + i]]
+
+        return shuffled_arr
+    
     def two_point_crossover(self, parent1, parent2):
         # 2点交叉
         cx_point1, cx_point2 = sorted(random.sample(range(1, len(parent1)), 2))
