@@ -16,7 +16,7 @@ from src.evaluation_functions import (
     most_frequent_element_count,
     calculate_score_details,
     calculate_total_score,
-    get_past_out_n,  # 新しく追加
+    # get_past_out_n,  # 新しく追加
 )
 
 class GeneticAlgorithm:
@@ -32,6 +32,7 @@ class GeneticAlgorithm:
         tournsize,
         cxpb,
         df,
+        past_out_n,
         col_name,
         col_class,
         weight1,
@@ -55,6 +56,7 @@ class GeneticAlgorithm:
 
         # 追加のパラメータ
         self.df = df
+        self.past_out_n = past_out_n
         self.col_name = col_name
         self.col_class = col_class
         self.weight1 = weight1
@@ -140,7 +142,7 @@ class GeneticAlgorithm:
     def evaluate(self, individual):
         # スコアリストを計算
         score_lists = calculate_score_details(
-            self.df, individual, self.col_name, self.col_class, self.COL_OUTPUT
+            self.df, individual, self.col_name, self.col_class, self.COL_OUTPUT, self.past_out_n
         )
         # 合計スコアを計算
         total_score = calculate_total_score(
@@ -191,7 +193,7 @@ class GeneticAlgorithm:
         print(self.names)
         print(best_individual)
         score_lists = calculate_score_details(
-            self.df, best_individual, self.col_name, self.col_class, self.COL_OUTPUT
+            self.df, best_individual, self.col_name, self.col_class, self.COL_OUTPUT, self.past_out_n
         )
         print(score_lists)
 
@@ -203,8 +205,12 @@ class GeneticAlgorithm:
 
 
 if __name__ == "__main__":
+    import time
+    # 実行前の時間を記録
+    start_time = time.time()
     scores = []
-    for i in range(7):
+    
+    for i in range(1):
         # エクセルファイルからの入力値の取得
         COL_OUTPUT="グループ分け"
         extractor = ExcelTableExtractor(
@@ -248,6 +254,10 @@ if __name__ == "__main__":
         extractor.close_workbook()
 
         # 初期データ処理
+        # dfから過去のグループ分けの数を取得する関数
+        def get_past_out_n(df, COL_OUTPUT):
+            past_out_columns = df.filter(like=COL_OUTPUT).columns
+            return sum(col[len(COL_OUTPUT):].isdigit() for col in past_out_columns)
         df_origin = pd.read_excel(EXCEL_NAME, sheet_name=SHEET_NAME)
         df = df_origin.copy()
         df = df[df[COL_TARGET] == 1]
@@ -259,6 +269,7 @@ if __name__ == "__main__":
         numbered_dict = {value: index for index, value in enumerate(classes)}
         df[COL_CLASS] = df[COL_CLASS].replace(numbered_dict)
         print(len(df))
+        past_out_n = get_past_out_n(df, COL_OUTPUT)
 
         ga = GeneticAlgorithm(
             names=list(df[COL_NAME]),
@@ -271,6 +282,7 @@ if __name__ == "__main__":
             tournsize=tournsize,
             cxpb=cxpb,
             df=df,
+            past_out_n=past_out_n,
             col_name=COL_NAME,
             col_class=COL_CLASS,
             weight1=WEIGHT1,
@@ -286,22 +298,27 @@ if __name__ == "__main__":
         # 出力処理
         print(best_individual)
         print(final_df)
-        past_out_n = get_past_out_n(df_origin, COL_OUTPUT)
-        new_col = COL_OUTPUT+str(past_out_n+1)
-        df[new_col] = best_individual
-        group_df = pd.concat([df_origin, df[new_col]],axis=1)
+        # past_out_n = get_past_out_n(df_origin, COL_OUTPUT)
+        # new_col = COL_OUTPUT+str(past_out_n+1)
+        # df[new_col] = best_individual
+        # group_df = pd.concat([df_origin, df[new_col]],axis=1)
 
-        # 既存のExcelファイルのシートをすべて読み込む
-        excel_file = pd.ExcelFile(EXCEL_NAME)
-        sheet_names = excel_file.sheet_names
-        sheet_dict = {sheet: excel_file.parse(sheet) for sheet in sheet_names}
+        # # 既存のExcelファイルのシートをすべて読み込む
+        # excel_file = pd.ExcelFile(EXCEL_NAME)
+        # sheet_names = excel_file.sheet_names
+        # sheet_dict = {sheet: excel_file.parse(sheet) for sheet in sheet_names}
 
-        # 新しいデータを追加
-        sheet_dict[SHEET_NAME] = group_df
-        sheet_dict[new_col] = final_df
+        # # 新しいデータを追加
+        # sheet_dict[SHEET_NAME] = group_df
+        # sheet_dict[new_col] = final_df
 
-        # すべてのシートを同じExcelファイルに書き込む
-        with pd.ExcelWriter(EXCEL_NAME) as writer:
-            for sheet_name, dataframe in sheet_dict.items():
-                dataframe.to_excel(writer, sheet_name=sheet_name, index=False)
+        # # すべてのシートを同じExcelファイルに書き込む
+        # with pd.ExcelWriter(EXCEL_NAME) as writer:
+        #     for sheet_name, dataframe in sheet_dict.items():
+        #         dataframe.to_excel(writer, sheet_name=sheet_name, index=False)
     print(scores)
+    end_time = time.time()
+
+    # 実行時間を計算
+    execution_time = end_time - start_time
+    print(f"Execution Time: {execution_time:.6f} seconds")
