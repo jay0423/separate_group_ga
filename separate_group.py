@@ -23,6 +23,8 @@ class GeneticAlgorithm:
         self,
         names,
         group_size,
+        ADJUST_GROUP_SIZE_FOR_REMAINDER,
+        extension_factor,
         population_size,
         generations,
         mutation_rate,
@@ -45,6 +47,8 @@ class GeneticAlgorithm:
     ):
         self.names = names
         self.group_size = group_size
+        self.ADJUST_GROUP_SIZE_FOR_REMAINDER = ADJUST_GROUP_SIZE_FOR_REMAINDER
+        self.extension_factor = extension_factor
         self.population_size = population_size
         self.COL_OUTPUT = COL_OUTPUT
 
@@ -97,7 +101,7 @@ class GeneticAlgorithm:
 
     # 個体を初期化する関数（リストをシャッフル）
     def init_individual(self):
-        genome = init_individual.get_genome(len(self.names), self.group_size, hi_lo="lo")
+        genome = init_individual.get_genome(len(self.names), self.group_size, hi_lo=ADJUST_GROUP_SIZE_FOR_REMAINDER, extension_factor=self.extension_factor)
         random.shuffle(genome)
         self.target_counts = Counter(genome)
         return genome
@@ -273,6 +277,7 @@ if __name__ == "__main__":
         MINIMIZE_DUPLICATE_AFFILIATIONS = extractor.get_value("MINIMIZE_DUPLICATE_AFFILIATIONS")
         GROUP_SIZE = extractor.get_value("GROUP_SIZE")
         ADJUST_GROUP_SIZE_FOR_REMAINDER = extractor.get_value("ADJUST_GROUP_SIZE_FOR_REMAINDER")
+        extension_factor = extractor.get_value("extension_factor")
 
         # テーブル3
         extractor.table = "テーブル3"
@@ -311,6 +316,8 @@ if __name__ == "__main__":
         ga = GeneticAlgorithm(
             names=list(df[COL_NAME]),
             group_size=GROUP_SIZE,
+            ADJUST_GROUP_SIZE_FOR_REMAINDER=ADJUST_GROUP_SIZE_FOR_REMAINDER,
+            extension_factor=extension_factor,
             population_size=population_size,
             generations=generations,
             mutation_rate=mutation_rate,
