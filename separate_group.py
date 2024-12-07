@@ -39,12 +39,16 @@ class GeneticAlgorithm:
         weight2,
         weight3,
         weight4,
-        COL_OUTPUT
+        COL_OUTPUT,
+        COL_HOST,  # 追加: COL_HOST の取得
+        custom_crossover_prob,
+        shuffle_selection_prob
     ):
         self.names = names
         self.group_size = group_size
         self.population_size = population_size
         self.COL_OUTPUT = COL_OUTPUT
+        self.COL_HOST = COL_HOST  # 追加: COL_HOST を保持
 
         # 遺伝的アルゴリズムパラメータ
         self.generations = generations
@@ -64,6 +68,10 @@ class GeneticAlgorithm:
         self.weight3 = weight3
         self.weight4 = weight4
 
+        # 追加: 新しい確率変数
+        self.custom_crossover_prob = custom_crossover_prob
+        self.shuffle_selection_prob = shuffle_selection_prob
+
         self.target_counts = dict()
 
         # 遺伝的アルゴリズムのセットアップ
@@ -77,7 +85,7 @@ class GeneticAlgorithm:
         )
         self.toolbox.register("population", tools.initRepeat, list, self.toolbox.individual)
 
-        # self.toolbox.register("mate", self.two_point_crossover)
+        # 交叉と突然変異の登録
         self.toolbox.register("mate", self.random_crossover)
         self.toolbox.register("mutate", tools.mutShuffleIndexes, indpb=self.mutation_indpb)
 
@@ -108,7 +116,7 @@ class GeneticAlgorithm:
         return best_individuals + rest_individuals[: k - len(best_individuals)]
 
     def random_crossover(self, parent1, parent2):
-        if random.random() < 0.5:
+        if random.random() < self.custom_crossover_prob:  # 変更: 0.7 → self.custom_crossover_prob
             return self.custom_crossover(parent1, parent2)
         else:
             return self.two_point_crossover(parent1, parent2)
@@ -117,18 +125,28 @@ class GeneticAlgorithm:
         # parent1とparent2に対してshuffle_selected_elementsを適用  
         child1 = self.shuffle_selected_elements(parent1)  
         child2 = self.shuffle_selected_elements(parent2)  
-    
-        # もう一度shuffle_selected_elementsを適用  
-        # child1 = self.shuffle_selected_elements(child1)  
-        # child2 = self.shuffle_selected_elements(child2)  
-    
+
+        # if random.random() < 0.5:
+        #     # もう一度shuffle_selected_elementsを適用  
+        #     child1 = self.shuffle_selected_elements(child1)  
+        #     child2 = self.shuffle_selected_elements(child2)  
+
         return creator.Individual(child1), creator.Individual(child2)  
     
     def shuffle_selected_elements(self, arr):
         unique_elements = list(set(arr))
         # 最小値と最大値の範囲からランダムに2つの値を選ぶ  
-        selected_elements = random.sample(unique_elements, 2)
-        val1, val2 = selected_elements[0], selected_elements[1]
+        if random.random() < self.shuffle_selection_prob:  # 変更: 0.9 → self.shuffle_selection_prob
+            selected_elements = random.sample(unique_elements, 2)
+            val1, val2 = selected_elements[0], selected_elements[1]
+        else:
+            # 戦略的選択
+            score_lists = calculate_score_details(
+                self.df, arr, self.col_name, self.col_class, self.COL_OUTPUT, self.past_out_n
+            )
+            sums = [sum(sublist) for sublist in score_lists]
+            top_two_indices = sorted(range(len(sums)), key=lambda i: sums[i], reverse=True)[:2]
+            val1, val2 = top_two_indices[0]+1, top_two_indices[1]+1 
 
         # val1 と val2 のインデックスを取得  
         indices_val1 = [i for i, x in enumerate(arr) if x == val1]
@@ -194,7 +212,6 @@ class GeneticAlgorithm:
 
     # アルゴリズムの実行
     def run(self):
-        # random.seed(42)
         population = self.toolbox.population(n=self.population_size)
         # 統計情報の設定
         stats = tools.Statistics(lambda ind: ind.fitness.values)
@@ -214,10 +231,31 @@ class GeneticAlgorithm:
         # 最良の個体の表示
         best_individual = tools.selBest(population, k=1)[0]
         scores_best_individual, final_groups = self.display_result(best_individual)
-        # self.export_excel(scores_best_individual, final_groups)
-        df1 = pd.DataFrame(final_groups)
-        df2 = pd.DataFrame(scores_best_individual)
-        final_df = pd.concat([df1, df2.T], axis=1)
+        
+        # 各グループ内でCOL_HOSTの値が小さい順にソートし、先頭の人のCOL_HOSTを+1カウント
+        for group in final_groups:
+            # グループをCOL_HOSTの値でソート
+            sorted_group = sorted(
+                group, 
+                key=lambda name: self.df.loc[self.df[self.col_name] == name, self.COL_HOST].values[0]
+            )
+            # ソートされたグループを更新
+            group[:] = sorted_group
+            # 先頭の人のCOL_HOSTを+1カウント
+            host_name = sorted_group[0]
+            self.df.loc[self.df[self.col_name] == host_name, self.COL_HOST] += 1
+
+        # final_dfの作成
+        df_groups = pd.DataFrame(final_groups).transpose()
+        df_groups.columns = [f'Group_{i+1}' for i in range(df_groups.shape[1])]
+        df_scores = pd.DataFrame(scores_best_individual, index=['Score'])
+        final_df = pd.concat([df_groups, df_scores], axis=0)
+
+        # COL_HOSTをfinal_dfに追加
+        host_counts = self.df.set_index(self.col_name)[self.COL_HOST]
+        final_df = final_df.append(host_counts, ignore_index=True)
+        final_df.index = list(final_df.index[:-1]) + ['COL_HOST']
+        
         return best_individual, final_df
 
     # 結果の表示
@@ -253,7 +291,7 @@ if __name__ == "__main__":
     
     for i in range(1):
         # エクセルファイルからの入力値の取得
-        COL_OUTPUT="グループ分け"
+        COL_OUTPUT = "グループ分け"
         extractor = ExcelTableExtractor(
             filename="settings.xlsx",
             worksheet_name="settings",
@@ -269,6 +307,7 @@ if __name__ == "__main__":
         COL_NAME = extractor.get_value("COL_NAME")
         COL_TARGET = extractor.get_value("COL_TARGET")
         COL_CLASS = extractor.get_value("COL_CLASS")
+        COL_HOST = extractor.get_value("COL_HOST")  # 追加: COL_HOST の取得
 
         # テーブル2
         extractor.table = "テーブル2"
@@ -291,6 +330,8 @@ if __name__ == "__main__":
         k_select_best = extractor.get_value("k_select_best")
         tournsize = extractor.get_value("tournsize")
         cxpb = extractor.get_value("cxpb")
+        custom_crossover_prob = extractor.get_value("custom_crossover_prob")
+        shuffle_selection_prob = extractor.get_value("shuffle_selection_prob")
 
         extractor.close_workbook()
 
@@ -299,7 +340,14 @@ if __name__ == "__main__":
         def get_past_out_n(df, COL_OUTPUT):
             past_out_columns = df.filter(like=COL_OUTPUT).columns
             return sum(col[len(COL_OUTPUT):].isdigit() for col in past_out_columns)
+        
         df_origin = pd.read_excel(EXCEL_NAME, sheet_name=SHEET_NAME)
+        
+        # COL_HOST 列の存在確認
+        if COL_HOST not in df_origin.columns:
+            print(f"エラー: '{COL_HOST}' 列が '{EXCEL_NAME}' のシート '{SHEET_NAME}' に存在しません。")
+            sys.exit()
+        
         df = df_origin.copy()
         df = df[df[COL_TARGET] == 1]
         print(len(df), len(set(list(df[COL_NAME]))))
@@ -330,7 +378,10 @@ if __name__ == "__main__":
             weight2=WEIGHT2,
             weight3=WEIGHT3,
             weight4=WEIGHT4,
-            COL_OUTPUT=COL_OUTPUT
+            COL_OUTPUT=COL_OUTPUT,
+            COL_HOST=COL_HOST,  # 追加: COL_HOST を渡す
+            custom_crossover_prob=custom_crossover_prob,       # 変更: extractor から取得した値を使用
+            shuffle_selection_prob=shuffle_selection_prob       # 変更: extractor から取得した値を使用
         )
         best_individual, final_df = ga.run()
         
