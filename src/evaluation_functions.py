@@ -35,7 +35,7 @@ def calculate_score_details(df, group_list, col_name, col_class, COL_OUTPUT, pas
 # スコアリストを基に合計スコアを算出する関数
 def calculate_total_score(score_lists, weight1, weight2, weight3, weight4):
     score_lists = np.array(score_lists)  # NumPy配列に変換
-    total_score = weight1 * score_lists[0].max() + weight2 * score_lists[0].sum()
+    total_score = weight1 * score_lists[0].max()
     for i, score_list in enumerate(score_lists[1:]):
-        total_score += weight3 * score_list.max() + (i+1) * weight4 * score_list.sum()
+        total_score += (i+1)**weight4 * (weight2 * score_list.max() + weight3 * score_list.sum())
     return total_score
