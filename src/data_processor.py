@@ -84,7 +84,7 @@ class DataProcessor:
                 # 右端から1,2,...の順で重/グループiを割り当てる
                 for i in range(1, past_out_n + 1):
                     # 右からi番目 => インデックスは col_len - i
-                    final_df.columns.values[col_len - i] = f"重/グループ{past_out_n-i+1}"
+                    final_df.columns.values[col_len - i] = f"重/グループ分け{past_out_n-i+1}"
 
         # -------------------------------------------------------
 
